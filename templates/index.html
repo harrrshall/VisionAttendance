@@ -1,1 +1,324 @@
-!
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automatic Attendance </title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1, h2 {
+            color: #333;
+        }
+
+        .upload-section, .result-section, .train-section {
+            margin-bottom: 20px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .custom-file-upload {
+            border: 1px solid #ccc;
+            display: inline-block;
+            padding: 6px 12px;
+            cursor: pointer;
+            background: #f8f8f8;
+            color: #333;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        #imagePreview {
+            max-width: 100%;
+            margin-top: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .loading:after {
+            content: ' .';
+            animation: dots 1s steps(5, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% {
+                color: rgba(0,0,0,0);
+                text-shadow:
+                    .25em 0 0 rgba(0,0,0,0),
+                    .5em 0 0 rgba(0,0,0,0);
+            }
+            40% {
+                color: black;
+                text-shadow:
+                    .25em 0 0 rgba(0,0,0,0),
+                    .5em 0 0 rgba(0,0,0,0);
+            }
+            60% {
+                text-shadow:
+                    .25em 0 0 black,
+                    .5em 0 0 rgba(0,0,0,0);
+            }
+            80%, 100% {
+                text-shadow:
+                    .25em 0 0 black,
+                    .5em 0 0 black;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Vision Attendance </h1>
+
+        <div class="upload-section">
+            <h2>Upload Classroom Image</h2>
+            <label for="fileInput" class="custom-file-upload">
+                Choose File
+            </label>
+            <input type="file" id="fileInput" accept="image/*">
+            <button id="processButton" onclick="processImage()" disabled>Process Image</button>
+            <img id="imagePreview" src="" alt="Image preview" style="display: none;">
+        </div>
+
+        <div id="loading" class="loading">Processing image</div>
+
+        <div class="result-section" style="display: none;">
+            <h2>Attendance Results</h2>
+            <table id="attendanceTable">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Table rows will be dynamically added here -->
+                </tbody>
+            </table>
+            <button id="downloadButton" onclick="downloadExcel()" disabled>Download Excel</button>
+        </div>
+
+        <div class="train-section">
+            <h2>Train Model</h2>
+            <p>To add a new student, upload a clear face image of the student. The filename should be the student's name
+                (e.g., "john_doe.jpg").</p>
+            <label for="trainFileInput" class="custom-file-upload">
+                Choose Student Image
+            </label>
+            <input type="file" id="trainFileInput" accept="image/*">
+            <button id="trainButton" onclick="trainModel()" disabled>Train Model</button>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const trainFileInput = document.getElementById('trainFileInput');
+        const processButton = document.getElementById('processButton');
+        const trainButton = document.getElementById('trainButton');
+        const downloadButton = document.getElementById('downloadButton');
+        const imagePreview = document.getElementById('imagePreview');
+        const resultSection = document.querySelector('.result-section');
+        const loadingIndicator = document.getElementById('loading');
+
+        fileInput.addEventListener('change', function() {
+            processButton.disabled = !this.files.length;
+            previewImage(this, imagePreview);
+        });
+
+        trainFileInput.addEventListener('change', function() {
+            trainButton.disabled = !this.files.length;
+        });
+
+        function previewImage(input, imgElement) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    imgElement.src = e.target.result;
+                    imgElement.style.display = 'block';
+                }
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        async function processImage() {
+            if (!fileInput.files || !fileInput.files[0]) return;
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                showLoading(true);
+                processButton.disabled = true;
+
+                const response = await fetch('/process_image', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Image processing failed');
+                }
+
+                const data = await response.json();
+
+                resultSection.style.display = 'block';
+                populateAttendanceTable(data.attendance);
+                downloadButton.disabled = false;
+            } catch (error) {
+                console.error('Error:', error);
+                alert(error.message);
+            } finally {
+                showLoading(false);
+                processButton.disabled = false;
+            }
+        }
+
+        function populateAttendanceTable(attendance) {
+            const tableBody = document.querySelector('#attendanceTable tbody');
+            tableBody.innerHTML = ''; // Clear previous results
+
+            attendance.forEach(student => {
+                const row = tableBody.insertRow();
+                row.insertCell(0).textContent = student.name;
+                row.insertCell(1).textContent = student.status;
+            });
+        }
+
+        async function downloadExcel() {
+            const tableBody = document.querySelector('#attendanceTable tbody');
+            const attendance = Array.from(tableBody.rows).map(row => ({
+                name: row.cells[0].textContent,
+                status: row.cells[1].textContent
+            }));
+
+            try {
+                downloadButton.disabled = true;
+
+                const response = await fetch('/download_excel', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ attendance }),
+                });
+
+                if (!response.ok) {
+                    throw new Error('Excel download failed');
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = 'attendance.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred while downloading the Excel file.');
+            } finally {
+                downloadButton.disabled = false;
+            }
+        }
+
+        async function trainModel() {
+            const file = trainFileInput.files[0];
+            if (!file) return;
+
+            if (!file.type.startsWith('image/')) {
+                alert('Please select a valid image file.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                showLoading(true);
+                trainButton.disabled = true;
+
+                const response = await fetch('/train_model', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error('Model training failed');
+                }
+
+                const data = await response.json();
+                alert(data.message);
+                trainFileInput.value = ''; // Clear the file input
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred while training the model.');
+            } finally {
+                showLoading(false);
+                trainButton.disabled = false;
+            }
+        }
+
+        function showLoading(show) {
+            loadingIndicator.style.display = show ? 'block' : 'none';
+        }
+    </script>
+</body>
+
+</html>
